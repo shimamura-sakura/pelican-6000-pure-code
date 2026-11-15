@@ -2,7 +2,8 @@
 """Build a self-contained single-file HTML version of 鹈鹕骑行_纯代码全片.
 
 Visuals stay vector-only (no external images or fonts); the single Opus mix at
-data/audio.opus is embedded into the virtual file system.
+data/audio.opus is embedded into the virtual file system. The gzip payload is
+stored as escaped ISO-8859-1 text instead of base64 to avoid the 4/3 expansion.
 """
 
 import base64
@@ -10,6 +11,25 @@ import gzip
 import json
 import pathlib
 import re
+
+
+PAYLOAD_PREFIX = "~"
+PAYLOAD_CODES = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-_"
+# Printable ISO-8859-1 except tab/LF, plus the HTML-hostile "<" and the escape "~".
+PAYLOAD_ESCAPED = (
+    list(range(0, 9)) + list(range(11, 32)) + [127] + list(range(128, 160)) + [60, 126]
+)
+PAYLOAD_ESCAPE = {value: PAYLOAD_CODES[index] for index, value in enumerate(PAYLOAD_ESCAPED)}
+assert len(PAYLOAD_CODES) == len(PAYLOAD_ESCAPED) == 65
+
+
+def encode_payload(data: bytes) -> str:
+    """Encode bytes as printable ISO-8859-1, escaping unprintable/HTML-hostile bytes."""
+    chunks = []
+    for value in data:
+        code = PAYLOAD_ESCAPE.get(value)
+        chunks.append(PAYLOAD_PREFIX + code if code is not None else chr(value))
+    return "".join(chunks)
 
 
 def trim_js_lines(code: str) -> str:
@@ -82,14 +102,14 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
     }
     vfs_bytes = json.dumps(vfs_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     vfs_gz = gzip.compress(vfs_bytes, compresslevel=9)
-    vfs_b64 = base64.b64encode(vfs_gz).decode("ascii")
+    vfs_payload = encode_payload(vfs_gz)
 
     html_out = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="iso-8859-1">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>鹈鹕六千年的车</title>
+  <title></title>
   <link rel="icon" href="data:,">
   <style>
 {bundled_css}
@@ -99,19 +119,45 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
   <main class="cinema-viewport">
     <div id="cinema-shell" class="cinema-shell">
       <div class="screen-wrap">
-        <canvas id="film" width="1920" height="1440" aria-label="鹈鹕六千年的车"></canvas>
+        <canvas id="film" width="1920" height="1440"></canvas>
       </div>
     </div>
   </main>
-  <script id="vfs-payload" type="text/plain">{vfs_b64}</script>
+  <script id="vfs-payload" type="text/plain">{vfs_payload}</script>
   <script>
 (async function bootSingleHtml() {{
-  const b64 = document.getElementById('vfs-payload').textContent.trim();
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const filmTitle = String.fromCodePoint(0x9e49, 0x9e55, 0x516d, 0x5343, 0x5e74, 0x7684, 0x8f66);
+  document.title = filmTitle;
+  const filmCanvas = document.getElementById('film');
+  if (filmCanvas) filmCanvas.setAttribute('aria-label', filmTitle);
+
+  const codes = '{PAYLOAD_CODES}';
+  const escaped = [];
+  for (let i = 0; i < 9; i++) escaped.push(i);
+  for (let i = 11; i < 32; i++) escaped.push(i);
+  escaped.push(127);
+  for (let i = 128; i < 160; i++) escaped.push(i);
+  escaped.push(60, 126);
+
+  const text = document.getElementById('vfs-payload').textContent;
+  const bytes = new Uint8Array(text.length);
+  let size = 0;
+  for (let i = 0; i < text.length; i++) {{
+    const code = text.charCodeAt(i);
+    if (code === 126) {{
+      if (++i >= text.length) throw new Error('Truncated VFS payload escape');
+      const index = codes.indexOf(text[i]);
+      if (index < 0 || index >= escaped.length) throw new Error('Invalid VFS payload escape');
+      bytes[size++] = escaped[index];
+    }} else if (code <= 0xFF) {{
+      bytes[size++] = code;
+    }} else {{
+      throw new Error('VFS payload requires ISO-8859-1 decoding (got U+' + code.toString(16) + ')');
+    }}
+  }}
+  const packed = bytes.subarray(0, size);
   const ds = new DecompressionStream('gzip');
-  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  const stream = new Blob([packed]).stream().pipeThrough(ds);
   const vfs = JSON.parse(await new Response(stream).text());
 
   const origFetch = window.fetch.bind(window);
@@ -159,11 +205,16 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
 </body>
 </html>
 """
-    out_path.write_text(html_out, encoding="utf-8")
+    try:
+        html_bytes = html_out.encode("iso-8859-1")
+    except UnicodeEncodeError as exc:
+        raise SystemExit(f"Single-file shell contains non-Latin-1 text: {exc}") from exc
+    out_path.write_bytes(html_bytes)
     print(f"Built {out_path}")
     print(f"  Raw VFS JSON: {len(vfs_bytes):,} B ({len(vfs_bytes)/1024/1024:.2f} MiB)")
     print(f"  Gzip-9 VFS:   {len(vfs_gz):,} B ({len(vfs_gz)/1024/1024:.2f} MiB)")
-    sz = out_path.stat().st_size
+    print(f"  Latin-1 payload: {len(vfs_payload):,} chars")
+    sz = len(html_bytes)
     print(f"  Final HTML:   {sz:,} B ({sz/1024/1024:.2f} MiB | {sz/1000/1000:.2f} MB)")
 
 

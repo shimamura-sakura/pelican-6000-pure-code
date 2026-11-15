@@ -8,7 +8,7 @@
 ## 本版资产体积
 
 - `data/audio.opus`：约 `408 KiB`（Ogg Opus，48 kHz 立体声）
-- `鹈鹕骑行_纯代码全片_单文件版.html`：`1.62 MiB`（单文件内嵌 Gzip-9 虚拟文件系统与 Opus 音轨，浏览器可直接打开）
+- `鹈鹕骑行_纯代码全片_单文件版.html`：`1.52 MiB`（单文件内嵌 Gzip-9 虚拟文件系统与 Opus 音轨，浏览器可直接打开）
 
 ## 音频
 
@@ -31,6 +31,8 @@
 ```bash
 python3 ./tools/build_single_html.py
 ```
+
+> 单文件 HTML 以 ISO-8859-1 保存并直接内嵌转义后的二进制 VFS，请直接双击打开或用 `server.py` 访问。若通过强制 UTF-8 的静态托管（如 GitHub Pages）访问该单文件，浏览器会报 ISO-8859-1 解码错误；多文件版不受影响。
 
 ## 致敬与鸣谢
 

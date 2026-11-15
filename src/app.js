@@ -34,7 +34,7 @@ async function main() {
 
   const assets = new AssetStore();
   const clock = new AudioClock(audioManifest, features);
-  // Pre-decode compact JS audio parameters in background Worker
+  // Prefetch the Opus mix so the first press can start without a network wait.
   clock.preload().catch((err) => {
     console.warn('Audio preload deferred until play:', err);
   });

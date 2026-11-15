@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Build a self-contained single-file HTML version of 鹈鹕骑行_纯代码全片 (zero images, audio, or font files)."""
+"""Build a self-contained single-file HTML version of 鹈鹕骑行_纯代码全片.
+
+Visuals stay vector-only (no external images or fonts); the single Opus mix at
+data/audio.opus is embedded into the virtual file system.
+"""
 
 import base64
 import gzip
@@ -17,13 +21,6 @@ def trim_js_lines(code: str) -> str:
             continue
         out.append(s)
     return "\n".join(out)
-
-
-def strip_es_module_syntax(code: str) -> str:
-    """Strip import statements and leading export keywords for Worker/Worklet bundling."""
-    cleaned = re.sub(r"import\s+(?:[\s\S]*?)\s+from\s+['\"][^'\"]+['\"];?\s*", "", code)
-    cleaned = re.sub(r"^export\s+(?=(?:class|function|const|let|var)\b)", "", cleaned, flags=re.MULTILINE)
-    return trim_js_lines(cleaned)
 
 
 def collect_topological_modules(root: pathlib.Path, entry_rel: str):
@@ -66,119 +63,21 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
         json_files[f"data/{p.name}"] = p.read_text(encoding="utf-8")
     json_files["data/audio/manifest.json"] = (root / "data/audio/manifest.json").read_text(encoding="utf-8")
 
-    audio_b64 = {}
-    for p in sorted((root / "data/audio").glob("*.js")):
-        txt = p.read_text(encoding="utf-8")
-        m = re.search(r'"([A-Za-z0-9+/=]+)"', txt)
-        if not m:
-            raise ValueError(f"Could not extract base64 payload from {p}")
-        audio_b64[p.name] = m.group(1)
-
     vendor_p5 = (root / "assets/vendor/p5.min.js").read_text(encoding="utf-8")
     vendor_brush = (root / "assets/vendor/p5.brush.js").read_text(encoding="utf-8")
-    vendor_lzma = (root / "assets/vendor/lzma-d-min.js").read_text(encoding="utf-8")
-
-    storage_code = strip_es_module_syntax((root / "src/audio/dsp/storage.js").read_text(encoding="utf-8"))
-    worker_script = (
-        vendor_lzma
-        + "\n"
-        + storage_code
-        + """
-self.onmessage = ({ data }) => {
-  try {
-    const decoded = self.LZMA.decompress(new Uint8Array(data.buffer));
-    if (typeof decoded === 'string') throw new Error('Unexpected text in binary parameters');
-    const buffer = unpackSpectrum(Uint8Array.from(decoded));
-    self.postMessage({ id: data.id, buffer }, [buffer]);
-  } catch (error) {
-    self.postMessage({ id: data.id, error: error.message || String(error) });
-  }
-};
-"""
-    )
-
-    dsp_order = [
-        "src/audio/dsp/fft.js",
-        "src/audio/dsp/resampler.js",
-        "src/audio/dsp/storage.js",
-        "src/audio/dsp/spectral-stream.js",
-        "src/audio/dsp/engine.js",
-        "src/audio/dsp/worklet.js",
-    ]
-    worklet_script = "\n".join(
-        strip_es_module_syntax((root / rel).read_text(encoding="utf-8")) for rel in dsp_order
-    )
+    opus_b64 = base64.b64encode((root / "data/audio.opus").read_bytes()).decode("ascii")
 
     mod_order, dep_map = collect_topological_modules(root, "src/app.js")
     modules_payload = []
     for rel in mod_order:
-        if rel == "src/audio/parameters.js":
-            code = """
-function base64ToArrayBuffer(b64) {
-  const binStr = atob(b64);
-  const bytes = new Uint8Array(binStr.length);
-  for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-  return bytes.buffer;
-}
-
-export async function loadParameters(manifest, onProgress) {
-  const worker = new Worker(window.__VFS_WORKER_URL);
-  const pending = new Map();
-  const streams = manifest.tracks.flatMap((track) => track.streams);
-  let completed = 0;
-  worker.onmessage = ({ data }) => {
-    const request = pending.get(data.id);
-    if (!request) return;
-    pending.delete(data.id);
-    if (data.error) request.reject(new Error(data.error));
-    else {
-      request.resolve(data.buffer);
-      onProgress?.(++completed, streams.length);
-    }
-  };
-  worker.onerror = (event) => {
-    for (const request of pending.values()) request.reject(new Error(event.message || 'Worker decode failed'));
-    pending.clear();
-  };
-  try {
-    const pairs = await Promise.all(
-      streams.map(async (stream, id) => {
-        const jsName = stream.file.replace(/\\.lzpar$/, '.js');
-        const b64 = window.__VFS_AUDIO_B64[jsName];
-        if (!b64) throw new Error('Missing embedded audio payload: ' + jsName);
-        const buffer = base64ToArrayBuffer(b64);
-        const result = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
-        worker.postMessage({ id, buffer }, [buffer]);
-        return [stream.file, await result];
-      })
-    );
-    return Object.fromEntries(pairs);
-  } finally {
-    worker.terminate();
-  }
-}
-""".strip()
-            deps = []
-        elif rel == "src/audio/audio-controller.js":
-            raw_code = (root / rel).read_text(encoding="utf-8")
-            raw_code = raw_code.replace(
-                "new URL('./dsp/worklet.js', import.meta.url)",
-                "window.__VFS_WORKLET_DATA_URL",
-            )
-            code = trim_js_lines(raw_code)
-            deps = dep_map[rel]
-        else:
-            code = trim_js_lines((root / rel).read_text(encoding="utf-8"))
-            deps = dep_map[rel]
-        modules_payload.append([rel, code, deps])
+        code = trim_js_lines((root / rel).read_text(encoding="utf-8"))
+        modules_payload.append([rel, code, dep_map[rel]])
 
     vfs_obj = {
         "json": json_files,
-        "audioB64": audio_b64,
+        "audioOpus": opus_b64,
         "p5": vendor_p5,
         "brush": vendor_brush,
-        "worker": worker_script,
-        "worklet": worklet_script,
         "modules": modules_payload,
     }
     vfs_bytes = json.dumps(vfs_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -234,16 +133,10 @@ export async function loadParameters(manifest, onProgress) {
     document.head.appendChild(s);
   }}
 
-  window.__VFS_AUDIO_B64 = vfs.audioB64;
-  window.__VFS_WORKER_URL = URL.createObjectURL(
-    new Blob([vfs.worker], {{ type: 'application/javascript' }})
-  );
-  const wkBytes = new TextEncoder().encode(vfs.worklet);
-  let wkBin = '';
-  for (let i = 0; i < wkBytes.length; i += 0x8000) {{
-    wkBin += String.fromCharCode.apply(null, wkBytes.subarray(i, i + 0x8000));
-  }}
-  window.__VFS_WORKLET_DATA_URL = 'data:text/javascript;base64,' + btoa(wkBin);
+  const opusBin = atob(vfs.audioOpus);
+  const opusBytes = new Uint8Array(opusBin.length);
+  for (let i = 0; i < opusBin.length; i++) opusBytes[i] = opusBin.charCodeAt(i);
+  window.__VFS_AUDIO_URL = URL.createObjectURL(new Blob([opusBytes], {{ type: 'audio/ogg' }}));
 
   const blobUrls = {{}};
   for (const [rel, rawCode, deps] of vfs.modules) {{

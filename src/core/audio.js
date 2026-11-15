@@ -11,30 +11,25 @@ export class AudioClock extends EventTarget {
 
     this._time = 0;
     this._playing = false;
-    this._loading = false;
     this._syncWallMs = performance.now();
     this._syncAudioTime = 0;
-    this._hasWorkletTick = false;
+    this._hasAudioTick = false;
 
-    this.controller = new AudioController(manifest, (data) => this._onWorkletUpdate(data));
-    this.controller.onLoading = (loading) => {
-      this._loading = loading;
-      this.dispatchEvent(new Event('statechange'));
-    };
+    this.controller = new AudioController(this.duration, (data) => this._onAudioUpdate(data));
   }
 
   preload() {
     return this.controller.preload();
   }
 
-  _onWorkletUpdate(data) {
+  _onAudioUpdate(data) {
     if (typeof data?.time !== 'number') return;
     const now = performance.now();
     const wTime = clamp(data.time, 0, this.duration);
 
     if (this._playing) {
       const pred = this._syncAudioTime + (now - this._syncWallMs) / 1000;
-      if (!this._hasWorkletTick || Math.abs(pred - wTime) > 0.045) {
+      if (!this._hasAudioTick || Math.abs(pred - wTime) > 0.045) {
         this._syncAudioTime = wTime;
         this._syncWallMs = now;
       } else {
@@ -42,7 +37,7 @@ export class AudioClock extends EventTarget {
         this._syncAudioTime = pred + (wTime - pred) * 0.25;
         this._syncWallMs = now;
       }
-      this._hasWorkletTick = true;
+      this._hasAudioTick = true;
       this._time = clamp(this._syncAudioTime, 0, this.duration);
 
       if (data.running === false) {
@@ -65,10 +60,6 @@ export class AudioClock extends EventTarget {
     return this._playing;
   }
 
-  get loading() {
-    return this._loading;
-  }
-
   get muted() {
     return this.controller.muted;
   }
@@ -82,7 +73,7 @@ export class AudioClock extends EventTarget {
     if (this._playing) {
       this._time = this.time;
       this._playing = false;
-      this._hasWorkletTick = false;
+      this._hasAudioTick = false;
       this.controller.pause();
       this.dispatchEvent(new Event('statechange'));
       return;
@@ -93,7 +84,7 @@ export class AudioClock extends EventTarget {
     this.controller.time = this._time;
     this._syncAudioTime = this._time;
     this._syncWallMs = performance.now();
-    this._hasWorkletTick = false;
+    this._hasAudioTick = false;
     await this.controller.play();
     this._syncAudioTime = this._time;
     this._syncWallMs = performance.now();
@@ -106,7 +97,7 @@ export class AudioClock extends EventTarget {
     this._time = next;
     this._syncAudioTime = next;
     this._syncWallMs = performance.now();
-    this._hasWorkletTick = false;
+    this._hasAudioTick = false;
     this.controller.seek(next);
     this.dispatchEvent(new Event('seeked'));
   }

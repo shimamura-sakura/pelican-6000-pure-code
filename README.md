@@ -1,20 +1,24 @@
 # 鹈鹕六千年的车 · Pure-Code Edition
 
-零音频采样（0 MP3/WAV）、零外部位图（0 PNG/JPG）、零外置字体包（0 WOFF2/TTF）——由 **Hydrogen** 独立交付的一整部 **2 分 55 秒（174.64s）** 纯代码中文交互式视听长卷：涵盖铁匠铺矢量篆刻开场、穿越 20 个艺术史时代、Live Canvas/SVG 动态笔触渲染与浏览器 `AudioWorklet` 实时中文歌声/多轨器乐合成。
+零外部位图（0 PNG/JPG）、零外置字体包（0 WOFF2/TTF），画面全部由矢量代码实时绘制；音频为一条预渲染 **Ogg Opus** 混音轨。由 **Hydrogen** 独立交付的一整部 **2 分 55 秒（174.64s）** 中文交互式视听长卷：涵盖铁匠铺矢量篆刻开场、穿越 20 个艺术史时代、Live Canvas/SVG 动态笔触渲染，以及预渲染中文歌声/多轨器乐。
 
 - **在线直开（GitHub Pages）**：https://wwh5441.github.io/pelican-6000-pure-code/
 - **单文件离线包下载**：前往 [Releases 最新版](https://github.com/wwh5441/pelican-6000-pure-code/releases/latest) 下载 `pelican-6000-pure-code-single.zip`
 
 ## 本版资产体积
 
-- `鹈鹕骑行_纯代码全片_单文件版.zip`：`1.93 MB`
-- `鹈鹕骑行_纯代码全片_单文件版.html`：`2.56 MiB`（单文件内嵌 Gzip-9 虚拟文件系统，浏览器可直接打开）
+- `data/audio.opus`：约 `408 KiB`（Ogg Opus，48 kHz 立体声）
+- `鹈鹕骑行_纯代码全片_单文件版.html`：`1.62 MiB`（单文件内嵌 Gzip-9 虚拟文件系统与 Opus 音轨，浏览器可直接打开）
+
+## 音频
+
+音轨为 `data/audio.opus`，由原始多轨频谱参数解码混音后预渲染。浏览器启动时预取，首次点击后通过 Web Audio `decodeAudioData` 解码为 `AudioBuffer`，再由 `AudioBufferSourceNode` 播放；旧的 LZMA / 频谱解码器与参数 payload 已移除。
 
 ## 播放交互控制
 
-极简零按钮播放器设计，点击画面即可开始合成播放：
+极简零按钮播放器设计，点击画面即可开始播放：
 
-- **点击画面 / `Space`**：播放 / 暂停（首次交互解锁实时 `AudioWorklet` 合成器）
+- **点击画面 / `Space`**：播放 / 暂停（首次交互解锁 Web Audio 播放）
 - **双击画面 / `F`**：进入 / 退出全屏
 - **`M`**：静音切换
 - **`R`**：从头重播

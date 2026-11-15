@@ -126,7 +126,7 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
   <script id="vfs-payload" type="text/plain">{vfs_payload}</script>
   <script>
 (async function bootSingleHtml() {{
-  const filmTitle = String.fromCodePoint(0x9e49, 0x9e55, 0x516d, 0x5343, 0x5e74, 0x7684, 0x8f66);
+  const filmTitle = String.fromCodePoint(0x9e48, 0x9e55, 0x516d, 0x5343, 0x5e74, 0x7684, 0x8f66);
   document.title = filmTitle;
   const filmCanvas = document.getElementById('film');
   if (filmCanvas) filmCanvas.setAttribute('aria-label', filmTitle);

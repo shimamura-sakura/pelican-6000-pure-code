@@ -1,3 +1,8 @@
+原作品为 wwh5441/pelican-6000-pure-code, 由 DeepSeek V4.1 Flash 1017 修改:
+- 音频5轨道合一, 改为 Opus 格式 (-b 16k -frame_duration 60), 删除 LZ 和音频解码器
+- 单文件版中 VFS Payload 改为 iso-8859-1 直接存储二进制，仅转义会破坏 HTML 的字节
+使单文件大小从原来的 2.5 MB 降到当前的 1.2 MB.
+
 # 鹈鹕六千年的车 · Pure-Code Edition
 
 零外部位图（0 PNG/JPG）、零外置字体包（0 WOFF2/TTF），画面全部由矢量代码实时绘制；音频为一条预渲染 **Ogg Opus** 混音轨。由 **Hydrogen** 独立交付的一整部 **2 分 55 秒（174.64s）** 中文交互式视听长卷：涵盖铁匠铺矢量篆刻开场、穿越 20 个艺术史时代、Live Canvas/SVG 动态笔触渲染，以及预渲染中文歌声/多轨器乐。

@@ -14,17 +14,16 @@ import re
 
 
 PAYLOAD_PREFIX = "~"
-PAYLOAD_CODES = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-_"
-# Printable ISO-8859-1 except tab/LF, plus the HTML-hostile "<" and the escape "~".
-PAYLOAD_ESCAPED = (
-    list(range(0, 9)) + list(range(11, 32)) + [127] + list(range(128, 160)) + [60, 126]
-)
+PAYLOAD_CODES = "012345678"
+# Only bytes that actually break HTML text or Windows-1252 decoding:
+# NUL, CR, "<", the escape prefix, and the five undefined Windows-1252 C1 bytes.
+PAYLOAD_ESCAPED = [0x00, 0x0D, 0x3C, 0x7E, 0x81, 0x8D, 0x8F, 0x90, 0x9D]
 PAYLOAD_ESCAPE = {value: PAYLOAD_CODES[index] for index, value in enumerate(PAYLOAD_ESCAPED)}
-assert len(PAYLOAD_CODES) == len(PAYLOAD_ESCAPED) == 65
+assert len(PAYLOAD_CODES) == len(PAYLOAD_ESCAPED) == 9
 
 
 def encode_payload(data: bytes) -> str:
-    """Encode bytes as printable ISO-8859-1, escaping unprintable/HTML-hostile bytes."""
+    """Encode bytes as ISO-8859-1 text, escaping only HTML/parser-breaking bytes."""
     chunks = []
     for value in data:
         code = PAYLOAD_ESCAPE.get(value)
@@ -132,12 +131,15 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
   if (filmCanvas) filmCanvas.setAttribute('aria-label', filmTitle);
 
   const codes = '{PAYLOAD_CODES}';
-  const escaped = [];
-  for (let i = 0; i < 9; i++) escaped.push(i);
-  for (let i = 11; i < 32; i++) escaped.push(i);
-  escaped.push(127);
-  for (let i = 128; i < 160; i++) escaped.push(i);
-  escaped.push(60, 126);
+  const escaped = [0x00, 0x0D, 0x3C, 0x7E, 0x81, 0x8D, 0x8F, 0x90, 0x9D];
+  const c1 = {{
+    0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85,
+    0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A,
+    0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92,
+    0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C,
+    0x017E: 0x9E, 0x0178: 0x9F,
+  }};
 
   const text = document.getElementById('vfs-payload').textContent;
   const bytes = new Uint8Array(text.length);
@@ -152,7 +154,9 @@ def build_single_html(root: pathlib.Path, out_path: pathlib.Path):
     }} else if (code <= 0xFF) {{
       bytes[size++] = code;
     }} else {{
-      throw new Error('VFS payload requires ISO-8859-1 decoding (got U+' + code.toString(16) + ')');
+      const mapped = c1[code];
+      if (mapped === undefined) throw new Error('VFS payload requires ISO-8859-1 decoding (got U+' + code.toString(16) + ')');
+      bytes[size++] = mapped;
     }}
   }}
   const packed = bytes.subarray(0, size);
